@@ -1,0 +1,96 @@
+! =====================================================================
+! SW2-HQ – Etagenswitch Zentrale (Cisco 2960)
+! Vertrieb und Gaeste (z. B. Gaeste-WLAN-Access-Point)
+! =====================================================================
+enable
+configure terminal
+hostname SW2-HQ
+no ip domain-lookup
+ip domain-name lab.local
+service password-encryption
+enable secret ChangeMe!Lab2026
+username admin privilege 15 secret ChangeMe!Lab2026
+banner motd ^Nur fuer autorisierte Administratoren.^
+!
+vlan 10
+ name VERWALTUNG
+vlan 20
+ name VERTRIEB
+vlan 30
+ name IT
+vlan 40
+ name GAESTE
+vlan 99
+ name MANAGEMENT
+vlan 998
+ name UNGENUTZT
+vlan 999
+ name NATIVE
+!
+spanning-tree mode rapid-pvst
+!
+interface GigabitEthernet0/1
+ description Trunk zu SW1-HQ
+ switchport mode trunk
+ switchport trunk native vlan 999
+ switchport trunk allowed vlan 10,20,30,40,99,999
+ switchport nonegotiate
+!
+interface range FastEthernet0/1 - 12
+ description Vertrieb
+ switchport mode access
+ switchport access vlan 20
+ switchport nonegotiate
+ switchport port-security
+ switchport port-security maximum 2
+ switchport port-security mac-address sticky
+ switchport port-security violation restrict
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+!
+interface range FastEthernet0/13 - 16
+ description Gaeste
+ switchport mode access
+ switchport access vlan 40
+ switchport nonegotiate
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+!
+interface range FastEthernet0/17 - 24
+ description Ungenutzt
+ switchport mode access
+ switchport access vlan 998
+ shutdown
+!
+interface GigabitEthernet0/2
+ description Ungenutzt
+ switchport mode access
+ switchport access vlan 998
+ shutdown
+!
+interface Vlan99
+ description Management
+ ip address 10.10.99.12 255.255.255.0
+ no shutdown
+ip default-gateway 10.10.99.1
+!
+crypto key generate rsa general-keys modulus 2048
+ip ssh version 2
+!
+access-list 10 remark Verwaltungszugriff nur aus IT- und Management-Netz
+access-list 10 permit 10.10.30.0 0.0.0.255
+access-list 10 permit 10.10.99.0 0.0.0.255
+access-list 10 deny any
+!
+line console 0
+ login local
+ exec-timeout 10 0
+!
+line vty 0 15
+ login local
+ transport input ssh
+ access-class 10 in
+ exec-timeout 10 0
+!
+end
+write memory

@@ -1,0 +1,147 @@
+! =====================================================================
+! R1-HQ – Hauptstandort (Cisco 2911)
+! Router-on-a-Stick, DHCP, NAT/PAT, OSPF, ACLs, SSH
+! Lab-Kennwort ChangeMe!Lab2026 vor echtem Einsatz ändern
+! =====================================================================
+enable
+configure terminal
+hostname R1-HQ
+no ip domain-lookup
+ip domain-name lab.local
+service password-encryption
+security passwords min-length 10
+enable secret ChangeMe!Lab2026
+username admin privilege 15 secret ChangeMe!Lab2026
+banner motd ^Nur fuer autorisierte Administratoren. Zugriffe werden protokolliert.^
+!
+! ---------- SSH ----------
+crypto key generate rsa general-keys modulus 2048
+ip ssh version 2
+ip ssh time-out 60
+ip ssh authentication-retries 3
+login block-for 120 attempts 3 within 60
+!
+! ---------- LAN: Router-on-a-Stick zu SW1 ----------
+interface GigabitEthernet0/0
+ description Trunk zu SW1-HQ
+ no ip address
+ no shutdown
+!
+interface GigabitEthernet0/0.10
+ description VLAN 10 Verwaltung
+ encapsulation dot1Q 10
+ ip address 10.10.10.1 255.255.255.0
+ ip nat inside
+!
+interface GigabitEthernet0/0.20
+ description VLAN 20 Vertrieb
+ encapsulation dot1Q 20
+ ip address 10.10.20.1 255.255.255.0
+ ip nat inside
+!
+interface GigabitEthernet0/0.30
+ description VLAN 30 IT
+ encapsulation dot1Q 30
+ ip address 10.10.30.1 255.255.255.0
+ ip nat inside
+!
+interface GigabitEthernet0/0.40
+ description VLAN 40 Gaeste
+ encapsulation dot1Q 40
+ ip address 10.10.40.1 255.255.255.0
+ ip nat inside
+ ip access-group GAESTE-IN in
+!
+interface GigabitEthernet0/0.99
+ description VLAN 99 Management
+ encapsulation dot1Q 99
+ ip address 10.10.99.1 255.255.255.0
+!
+interface GigabitEthernet0/0.999
+ description Native VLAN (ungenutzt)
+ encapsulation dot1Q 999 native
+!
+! ---------- WAN zum Provider ----------
+interface GigabitEthernet0/1
+ description Internet (ISP)
+ ip address 203.0.113.2 255.255.255.252
+ ip nat outside
+ no shutdown
+!
+! ---------- Standortkopplung zu R2 ----------
+interface GigabitEthernet0/2
+ description Link zu R2-Filiale
+ ip address 10.255.0.1 255.255.255.252
+ ip nat inside
+ ip ospf network point-to-point
+ no shutdown
+!
+! ---------- DHCP ----------
+ip dhcp excluded-address 10.10.10.1 10.10.10.10
+ip dhcp excluded-address 10.10.20.1 10.10.20.10
+ip dhcp excluded-address 10.10.30.1 10.10.30.10
+ip dhcp excluded-address 10.10.40.1 10.10.40.10
+!
+ip dhcp pool VLAN10-VERWALTUNG
+ network 10.10.10.0 255.255.255.0
+ default-router 10.10.10.1
+ dns-server 1.1.1.1
+!
+ip dhcp pool VLAN20-VERTRIEB
+ network 10.10.20.0 255.255.255.0
+ default-router 10.10.20.1
+ dns-server 1.1.1.1
+!
+ip dhcp pool VLAN30-IT
+ network 10.10.30.0 255.255.255.0
+ default-router 10.10.30.1
+ dns-server 1.1.1.1
+!
+ip dhcp pool VLAN40-GAESTE
+ network 10.10.40.0 255.255.255.0
+ default-router 10.10.40.1
+ dns-server 1.1.1.1
+!
+! ---------- NAT/PAT ----------
+ip access-list standard NAT-INTERN
+ permit 10.0.0.0 0.255.255.255
+ip nat inside source list NAT-INTERN interface GigabitEthernet0/1 overload
+!
+! ---------- Routing ----------
+ip route 0.0.0.0 0.0.0.0 203.0.113.1
+!
+router ospf 1
+ router-id 1.1.1.1
+ passive-interface default
+ no passive-interface GigabitEthernet0/2
+ network 10.10.0.0 0.0.255.255 area 0
+ network 10.255.0.0 0.0.0.3 area 0
+ default-information originate
+!
+! ---------- ACL: Gaeste nur ins Internet ----------
+ip access-list extended GAESTE-IN
+ remark DHCP-Anfragen an den Router erlauben
+ remark danach: keine internen Netze, nur Internet
+ permit udp any any eq bootps
+ deny ip 10.10.40.0 0.0.0.255 10.0.0.0 0.255.255.255
+ permit ip 10.10.40.0 0.0.0.255 any
+!
+! ---------- Verwaltungszugriff nur aus IT- und Management-Netz ----------
+ip access-list standard ADMIN-ZUGRIFF
+ permit 10.10.30.0 0.0.0.255
+ permit 10.10.99.0 0.0.0.255
+ deny any log
+!
+line console 0
+ login local
+ exec-timeout 10 0
+ logging synchronous
+!
+line vty 0 15
+ login local
+ transport input ssh
+ access-class ADMIN-ZUGRIFF in
+ exec-timeout 10 0
+!
+end
+write memory

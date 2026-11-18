@@ -1,0 +1,59 @@
+! =====================================================================
+! R2-FILIALE – Zweigstelle (Cisco 2911)
+! Eigenes LAN mit DHCP, Internet ueber die Zentrale (OSPF-Default)
+! =====================================================================
+enable
+configure terminal
+hostname R2-FILIALE
+no ip domain-lookup
+ip domain-name lab.local
+service password-encryption
+security passwords min-length 10
+enable secret ChangeMe!Lab2026
+username admin privilege 15 secret ChangeMe!Lab2026
+banner motd ^Nur fuer autorisierte Administratoren. Zugriffe werden protokolliert.^
+!
+crypto key generate rsa general-keys modulus 2048
+ip ssh version 2
+login block-for 120 attempts 3 within 60
+!
+interface GigabitEthernet0/0
+ description Link zu R1-HQ
+ ip address 10.255.0.2 255.255.255.252
+ ip ospf network point-to-point
+ no shutdown
+!
+interface GigabitEthernet0/1
+ description LAN Filiale (VLAN 50)
+ ip address 10.20.50.1 255.255.255.0
+ no shutdown
+!
+ip dhcp excluded-address 10.20.50.1 10.20.50.10
+ip dhcp pool FILIALE
+ network 10.20.50.0 255.255.255.0
+ default-router 10.20.50.1
+ dns-server 1.1.1.1
+!
+router ospf 1
+ router-id 2.2.2.2
+ passive-interface GigabitEthernet0/1
+ network 10.255.0.0 0.0.0.3 area 0
+ network 10.20.50.0 0.0.0.255 area 0
+!
+ip access-list standard ADMIN-ZUGRIFF
+ permit 10.10.30.0 0.0.0.255
+ permit 10.10.99.0 0.0.0.255
+ deny any log
+!
+line console 0
+ login local
+ exec-timeout 10 0
+!
+line vty 0 15
+ login local
+ transport input ssh
+ access-class ADMIN-ZUGRIFF in
+ exec-timeout 10 0
+!
+end
+write memory
